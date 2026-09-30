@@ -1,7 +1,5 @@
-// /app/layout.tsx
 import '@/app/ui/global.css';
-// 👇 Import the inter font utility configuration
-import { inter } from './ui/fonts'; 
+import { inter } from '@/app/ui/fonts';
  
 export default function RootLayout({
   children,
@@ -10,8 +8,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      {/* 👇 Inject inter.className into the body wrapper */}
-      <body className={`${inter.className} antialiased`}>
+      <body className={`${inter.className} antialiased bg-white text-gray-900`}>
         {children}
       </body>
     </html>
