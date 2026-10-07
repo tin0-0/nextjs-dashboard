@@ -1,31 +1,57 @@
+// /app/lib/actions.ts
 'use server';
 
 import { z } from 'zod';
+import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import postgres from 'postgres';
+import { signIn } from '@/auth'; // Imported for authentication
+import { AuthError } from 'next-auth'; // Imported to handle login exceptions
 
-const sql = postgres(process.env.POSTGRES_URL_NON_POOLING!, { ssl: 'require' });
-
+// 1. Zod Schema Definitions
 const FormSchema = z.object({
   id: z.string(),
-  customerId: z.string(),
-  amount: z.coerce.number(),
-  status: z.enum(['pending', 'paid']),
+  customerId: z.string({
+    invalid_type_error: 'Please select a customer.',
+  }),
+  amount: z.coerce
+    .number()
+    .gt(0, { message: 'Please enter an amount greater than \$0.' }),
+  status: z.enum(['pending', 'paid'], {
+    invalid_type_error: 'Please select an invoice status.',
+  }),
   date: z.string(),
 });
 
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 
-// 1. Safe Create Action
-export async function createInvoice(formData: FormData) {
-  const { customerId, amount, status } = CreateInvoice.parse({
+// 2. TypeScript State Export Type
+export type State = {
+  errors?: {
+    customerId?: string[];
+    amount?: string[];
+    status?: string[];
+  };
+  message?: string | null;
+};
+
+// 3. Create Action Handler (Chapter 13 validation)
+export async function createInvoice(prevState: State, formData: FormData): Promise<State> {
+  const validatedFields = CreateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
   });
 
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Create Invoice.',
+    };
+  }
+
+  const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
   const date = new Date().toISOString().split('T')[0];
 
@@ -35,21 +61,35 @@ export async function createInvoice(formData: FormData) {
       VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
     `;
   } catch (error) {
-    throw new Error('Database Error: Failed to Create Invoice.'); // Change to throw
+    return {
+      message: 'Database Error: Failed to Create Invoice.',
+    };
   }
 
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
 }
 
-// 2. Safe Update Action
-export async function updateInvoice(id: string, formData: FormData) {
-  const { customerId, amount, status } = UpdateInvoice.parse({
+// 4. Update Action Handler (Chapter 13 validation)
+export async function updateInvoice(
+  id: string,
+  prevState: State,
+  formData: FormData,
+): Promise<State> {
+  const validatedFields = UpdateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
   });
 
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Update Invoice.',
+    };
+  }
+
+  const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
 
   try {
@@ -59,19 +99,42 @@ export async function updateInvoice(id: string, formData: FormData) {
       WHERE id = ${id}
     `;
   } catch (error) {
-    throw new Error('Database Error: Failed to Update Invoice.'); // Change to throw
+    return {
+      message: 'Database Error: Failed to Update Invoice.',
+    };
   }
 
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
 }
 
-// 3. Safe Delete Action
+// 5. Delete Action Handler (Chapter 13 validation wrapper)
 export async function deleteInvoice(id: string) {
   try {
     await sql`DELETE FROM invoices WHERE id = ${id}`;
+    revalidatePath('/dashboard/invoices');
+    return { message: 'Deleted Invoice.' };
   } catch (error) {
-    throw new Error('Database Error: Failed to Delete Invoice.'); // Change to throw
+    return { message: 'Database Error: Failed to Delete Invoice.' };
   }
-  revalidatePath('/dashboard/invoices');
+}
+
+// 6. Authenticate User Action Handler (Chapter 14 entry)
+export async function authenticate(
+  prevState: string | undefined,
+  formData: FormData,
+) {
+  try {
+    await signIn('credentials', formData);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      switch (error.type) {
+        case 'CredentialsSignin':
+          return 'Invalid credentials.';
+        default:
+          return 'Something went wrong.';
+      }
+    }
+    throw error;
+  }
 }
