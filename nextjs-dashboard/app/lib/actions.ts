@@ -2,13 +2,18 @@
 'use server';
 
 import { z } from 'zod';
-import { sql } from '@vercel/postgres';
+import { Pool } from 'pg'; // Replaced @vercel/postgres with your standard Supabase connection pool
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { signIn } from '@/auth'; // Imported for authentication
-import { AuthError } from 'next-auth'; // Imported to handle login exceptions
+import { signIn } from '@/auth'; 
+import { AuthError } from 'next-auth'; 
 
-// 1. Zod Schema Definitions
+// Initialize your connection pool pointing directly to your Supabase string
+const pool = new Pool({
+  connectionString: process.env.POSTGRES_URL,
+});
+
+// 1. Zod Parsing Form Validation Schemas
 const FormSchema = z.object({
   id: z.string(),
   customerId: z.string({
@@ -26,7 +31,7 @@ const FormSchema = z.object({
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 
-// 2. TypeScript State Export Type
+// 2. State Type Contract for Form State Handlers
 export type State = {
   errors?: {
     customerId?: string[];
@@ -36,7 +41,7 @@ export type State = {
   message?: string | null;
 };
 
-// 3. Create Action Handler (Chapter 13 validation)
+// 3. Create Invoice Server Action (Supabase Safe Pool Connection)
 export async function createInvoice(prevState: State, formData: FormData): Promise<State> {
   const validatedFields = CreateInvoice.safeParse({
     customerId: formData.get('customerId'),
@@ -56,10 +61,11 @@ export async function createInvoice(prevState: State, formData: FormData): Promi
   const date = new Date().toISOString().split('T')[0];
 
   try {
-    await sql`
-      INSERT INTO invoices (customer_id, amount, status, date)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
-    `;
+    // Parameterized string format query to match database pooling safely
+    await pool.query(
+      'INSERT INTO invoices (customer_id, amount, status, date) VALUES ($1, $2, $3, $4)',
+      [customerId, amountInCents, status, date]
+    );
   } catch (error) {
     return {
       message: 'Database Error: Failed to Create Invoice.',
@@ -70,7 +76,7 @@ export async function createInvoice(prevState: State, formData: FormData): Promi
   redirect('/dashboard/invoices');
 }
 
-// 4. Update Action Handler (Chapter 13 validation)
+// 4. Update Invoice Server Action (Supabase Safe Pool Connection)
 export async function updateInvoice(
   id: string,
   prevState: State,
@@ -93,11 +99,11 @@ export async function updateInvoice(
   const amountInCents = amount * 100;
 
   try {
-    await sql`
-      UPDATE invoices
-      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-      WHERE id = ${id}
-    `;
+    // Parameterized string format query to match database pooling safely
+    await pool.query(
+      'UPDATE invoices SET customer_id = $1, amount = $2, status = $3 WHERE id = $4',
+      [customerId, amountInCents, status, id]
+    );
   } catch (error) {
     return {
       message: 'Database Error: Failed to Update Invoice.',
@@ -108,10 +114,11 @@ export async function updateInvoice(
   redirect('/dashboard/invoices');
 }
 
-// 5. Delete Action Handler (Chapter 13 validation wrapper)
+// 5. Delete Invoice Server Action (Supabase Safe Pool Connection)
 export async function deleteInvoice(id: string) {
   try {
-    await sql`DELETE FROM invoices WHERE id = ${id}`;
+    // Parameterized string format query to match database pooling safely
+    await pool.query('DELETE FROM invoices WHERE id = $1', [id]);
     revalidatePath('/dashboard/invoices');
     return { message: 'Deleted Invoice.' };
   } catch (error) {
@@ -119,7 +126,7 @@ export async function deleteInvoice(id: string) {
   }
 }
 
-// 6. Authenticate User Action Handler (Chapter 14 entry)
+// 6. Authenticate Form Handler Action (Chapter 14 Entry Point)
 export async function authenticate(
   prevState: string | undefined,
   formData: FormData,
