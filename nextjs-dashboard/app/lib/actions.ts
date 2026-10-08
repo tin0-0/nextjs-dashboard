@@ -1,8 +1,8 @@
 // /app/lib/actions.ts
-'use server';
+'use server'; // CRITICAL: This must be the absolute first line of the file! 🎯
 
 import { z } from 'zod';
-import { Pool } from 'pg'; // Replaced @vercel/postgres with your standard Supabase connection pool
+import { Pool } from 'pg'; // Secure connection pooling for your Supabase database instance
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { signIn } from '@/auth'; 
@@ -61,7 +61,6 @@ export async function createInvoice(prevState: State, formData: FormData): Promi
   const date = new Date().toISOString().split('T')[0];
 
   try {
-    // Parameterized string format query to match database pooling safely
     await pool.query(
       'INSERT INTO invoices (customer_id, amount, status, date) VALUES ($1, $2, $3, $4)',
       [customerId, amountInCents, status, date]
@@ -99,7 +98,6 @@ export async function updateInvoice(
   const amountInCents = amount * 100;
 
   try {
-    // Parameterized string format query to match database pooling safely
     await pool.query(
       'UPDATE invoices SET customer_id = $1, amount = $2, status = $3 WHERE id = $4',
       [customerId, amountInCents, status, id]
@@ -117,7 +115,6 @@ export async function updateInvoice(
 // 5. Delete Invoice Server Action (Supabase Safe Pool Connection)
 export async function deleteInvoice(id: string) {
   try {
-    // Parameterized string format query to match database pooling safely
     await pool.query('DELETE FROM invoices WHERE id = $1', [id]);
     revalidatePath('/dashboard/invoices');
     return { message: 'Deleted Invoice.' };

@@ -20,8 +20,8 @@ export default function LoginForm() {
   );
 
   return (
-    /* FIX: method="POST" stops variables from dumping into the URL search bar */
-    <form action={formAction} method="POST" className="space-y-3">
+    /* React 19 handles the method automatically when action points to a server function */
+    <form action={formAction} className="space-y-3">
       <div className="flex-1 rounded-lg bg-gray-50 px-6 pb-4 pt-8">
         <h1 className={`${lusitana.className} mb-3 text-2xl`}>
           Please log in to continue.

@@ -15,16 +15,18 @@ const pool = new Pool({
 async function getUser(email: string): Promise<User | undefined> {
   try {
     const result = await pool.query<User>('SELECT * FROM users WHERE email = $1', [email]);
-    return result.rows[0]; // Returns the single matched user profile record
+    
+    // Grab the first matched user row object profile safely
+    return result.rows[0]; 
   } catch (error) {
     console.error('Failed to fetch user:', error);
     throw new Error('Failed to fetch user.');
   }
 }
 
-// FIX: Added 'handlers' to the destructive export mapping signature block
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  secret: process.env.AUTH_SECRET, // FIX: Injects the authentication key directly into the provider pipeline 🎯
   providers: [
     Credentials({
       async authorize(credentials) {
@@ -36,19 +38,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const { email, password } = parsedCredentials.data;
           const user = await getUser(email);
           
-          console.log('--- LOGIN DEBUG ---');
-          console.log('User found in Supabase database:', !!user);
-          
-          if (user) {
-            console.log('Entered Password string:', password);
-            console.log('Database Encrypted Hash String:', user.password);
-            
-            const passwordsMatch = await bcrypt.compare(password, user.password);
-            console.log('Do Passwords Match?:', passwordsMatch);
-            console.log('-------------------');
-            
-            if (passwordsMatch) return user;
-          }
+          if (!user) return null;
+
+          const passwordsMatch = await bcrypt.compare(password, user.password);
+          if (passwordsMatch) return user;
         }
 
         console.log('Invalid credentials matching logic fallback triggered.');
